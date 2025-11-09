@@ -1,6 +1,6 @@
 MPV Remote 2 Node, is an enhanced and updated nodejs application for controlling MPV media player remotely running on your PC, based on the original [MPV Remote Node](https://github.com/husudosu/mpv-remote-node) by [@husudosu](https://github.com/husudosu/), Ferenc Nánási 
 
-# MPV Remote 2, Android app
+# MPV Remote 2, Node server
 <p align="center">
 <img src="https://github.com/ilivetruth/mpv-remote-2/blob/main/images/icon.png?raw=true" >
 </p>
