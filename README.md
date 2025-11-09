@@ -2,6 +2,17 @@ MPV remote control API. You can use [MPV Remote android application](https://git
 
 [API documentation accessible here.](https://github.com/husudosu/mpv-remote-node/blob/master/APIDESIGN.md)
 
+## 🖥️ Display Control Feature
+
+Control your display remotely - turn your monitor on/off from the app! Works with both X11 and Wayland.
+
+**Quick Setup (Wayland users):**
+```bash
+./install-display-control.sh
+```
+
+[📖 Full documentation and manual setup](DISPLAY-CONTROL.md)
+
 # Installation
 
 ### Requirements:

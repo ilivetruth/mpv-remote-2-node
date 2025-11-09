@@ -18,7 +18,68 @@ const WIN_REBOOT_COMMAND = "shutdown /r /t 1";
 const UNIX_SHUTDOWN_COMMAND = "/usr/sbin/shutdown now";
 const UNIX_REBOOT_COMMAND = "/usr/sbin/reboot";
 
-const { initDB } = require("./crud");
+// Function to get the appropriate display off command
+function getDisplayOffCommand() {
+  const desktop = process.env.XDG_CURRENT_DESKTOP?.toLowerCase() || "";
+  const session = process.env.XDG_SESSION_TYPE?.toLowerCase() || "";
+
+  // KDE Plasma (works for both X11 and Wayland)
+  if (desktop.includes("kde")) {
+    return "/bin/sleep 1 && /bin/dbus-send --session --print-reply --dest=org.kde.kglobalaccel /component/org_kde_powerdevil org.kde.kglobalaccel.Component.invokeShortcut string:'Turn Off Screen'";
+  }
+
+  // GNOME
+  if (desktop.includes("gnome")) {
+    return "dbus-send --session --dest=org.gnome.ScreenSaver --type=method_call /org/gnome/ScreenSaver org.gnome.ScreenSaver.SetActive boolean:true";
+  }
+
+  // Fallback to xset for X11 sessions
+  if (session === "x11") {
+    return "sleep 0.5 && xset dpms force off";
+  }
+
+  // Default fallback (try xset)
+  return "xset dpms force off";
+}
+
+// Function to get the appropriate display on command (wake display)
+function getDisplayOnCommand() {
+  const desktop = process.env.XDG_CURRENT_DESKTOP?.toLowerCase() || "";
+  const session = process.env.XDG_SESSION_TYPE?.toLowerCase() || "";
+
+  console.log("Display on - Desktop:", desktop, "Session:", session);
+
+  // For Wayland, we need to simulate input to wake display
+  // This requires ydotool to be installed and ydotoold daemon running
+  if (session === "wayland") {
+    // Use ydotool wrapper script to simulate a Shift key press
+    // Wrapper is needed because sudo doesn't pass environment variables
+    return "sudo /usr/local/bin/ydotool-wake";
+  }
+
+  // X11 - much easier, just force DPMS on
+  if (session === "x11") {
+    return "xset dpms force on";
+  }
+
+  // Default fallback
+  console.log("Using fallback display on command");
+  return "xset dpms force on 2>/dev/null || xdotool mousemove 0 0";
+}
+
+const {
+  initDB,
+  toggleFavorite,
+  getFavorites,
+  getMediastatusEntries,
+  createSavedPlaylist,
+  getSavedPlaylists,
+  getSavedPlaylist,
+  deleteSavedPlaylist,
+  addEntryToSavedPlaylist,
+  removeEntryFromSavedPlaylist,
+  updatePlaylistEntryPositions
+} = require("./crud");
 
 const tempdir = process.env.TEMP || process.env.TMP || "/tmp"; // Temp dir
 const FILE_LOCAL_OPTIONS_PATH = path.join(tempdir, "file-local-options.txt");
@@ -86,6 +147,151 @@ app.use(express.json());
 
 app.use("/", filebrowser);
 app.use("/api/v1/collections", collections);
+
+// Favorites endpoints
+app.post("/api/v1/favorites/toggle", async (req, res) => {
+  try {
+    const filepath = req.body.filepath;
+    if (!filepath) {
+      return res.status(400).json({ message: "filepath is required" });
+    }
+    const result = await toggleFavorite(filepath);
+    return res.json(result);
+  } catch (exc) {
+    console.log(exc);
+    return res.status(500).json({ message: exc.message || exc });
+  }
+});
+
+app.get("/api/v1/favorites", async (req, res) => {
+  try {
+    const directory = req.query.directory || null;
+    const favorites = await getFavorites(directory);
+    return res.json(favorites);
+  } catch (exc) {
+    console.log(exc);
+    return res.status(500).json({ message: exc.message || exc });
+  }
+});
+
+app.get("/api/v1/favorites/status/:filepath(*)", async (req, res) => {
+  try {
+    const filepath = req.params.filepath;
+    const status = await getMediastatusEntries(filepath);
+    return res.json({ favorited: status && status.favorited ? 1 : 0 });
+  } catch (exc) {
+    console.log(exc);
+    return res.status(500).json({ message: exc.message || exc });
+  }
+});
+
+// Saved Playlists endpoints
+app.get("/api/v1/saved-playlists", async (req, res) => {
+  try {
+    const playlists = await getSavedPlaylists();
+    return res.json(playlists);
+  } catch (exc) {
+    console.log(exc);
+    return res.status(500).json({ message: exc.message || exc });
+  }
+});
+
+app.post("/api/v1/saved-playlists", async (req, res) => {
+  try {
+    const { name, entries } = req.body;
+    if (!name) {
+      return res.status(400).json({ message: "name is required" });
+    }
+    const playlist = await createSavedPlaylist(name, entries);
+    return res.json(playlist);
+  } catch (exc) {
+    console.log(exc);
+    return res.status(500).json({ message: exc.message || exc });
+  }
+});
+
+app.get("/api/v1/saved-playlists/:id", async (req, res) => {
+  try {
+    const playlist = await getSavedPlaylist(req.params.id);
+    if (!playlist) {
+      return res.status(404).json({ message: "Playlist not found" });
+    }
+    return res.json(playlist);
+  } catch (exc) {
+    console.log(exc);
+    return res.status(500).json({ message: exc.message || exc });
+  }
+});
+
+app.delete("/api/v1/saved-playlists/:id", async (req, res) => {
+  try {
+    await deleteSavedPlaylist(req.params.id);
+    return res.json({ message: "success" });
+  } catch (exc) {
+    console.log(exc);
+    return res.status(500).json({ message: exc.message || exc });
+  }
+});
+
+app.post("/api/v1/saved-playlists/:id/entries", async (req, res) => {
+  try {
+    const { filePath } = req.body;
+    if (!filePath) {
+      return res.status(400).json({ message: "filePath is required" });
+    }
+    const playlist = await addEntryToSavedPlaylist(req.params.id, filePath);
+    return res.json(playlist);
+  } catch (exc) {
+    console.log(exc);
+    return res.status(500).json({ message: exc.message || exc });
+  }
+});
+
+app.delete("/api/v1/saved-playlists/:playlistId/entries/:entryId", async (req, res) => {
+  try {
+    await removeEntryFromSavedPlaylist(req.params.entryId);
+    return res.json({ message: "success" });
+  } catch (exc) {
+    console.log(exc);
+    return res.status(500).json({ message: exc.message || exc });
+  }
+});
+
+app.post("/api/v1/saved-playlists/:id/load", async (req, res) => {
+  try {
+    const playlist = await getSavedPlaylist(req.params.id);
+    if (!playlist) {
+      return res.status(404).json({ message: "Playlist not found" });
+    }
+
+    // Clear current playlist
+    await mpv.clearPlaylist();
+
+    // Load each entry into MPV
+    for (const entry of playlist.entries) {
+      await mpv.load(entry.file_path, "append-play");
+    }
+
+    return res.json({ message: "success", loaded: playlist.entries.length });
+  } catch (exc) {
+    console.log(exc);
+    return res.status(500).json({ message: exc.message || exc });
+  }
+});
+
+app.put("/api/v1/saved-playlists/:id/reorder", async (req, res) => {
+  try {
+    const { entries } = req.body;
+    if (!entries || !Array.isArray(entries)) {
+      return res.status(400).json({ message: "entries array is required" });
+    }
+    const playlist = await updatePlaylistEntryPositions(req.params.id, entries);
+    return res.json(playlist);
+  } catch (exc) {
+    console.log(exc);
+    return res.status(500).json({ message: exc.message || exc });
+  }
+});
 
 const mpv = new mpvAPI({
   socket: settings.socketName,
@@ -518,7 +724,35 @@ async function shutdownAction(action) {
       break;
     case "quit":
       await mpv.stop();
-
+      break;
+    case "disable-display":
+      if (os.platform !== "win32") {
+        const cmd = getDisplayOffCommand();
+        console.log("Executing display off command:", cmd);
+        exec(cmd, (err, stdout, stderr) => {
+          if (err) {
+            console.error("Display off error:", err);
+            if (stderr) console.error("stderr:", stderr);
+          } else {
+            console.log("Display turned off successfully");
+          }
+        });
+      }
+      break;
+    case "enable-display":
+      if (os.platform !== "win32") {
+        const cmd = getDisplayOnCommand();
+        console.log("Executing display on command:", cmd);
+        exec(cmd, (err, stdout, stderr) => {
+          if (err) {
+            console.error("Display on error:", err);
+            if (stderr) console.error("stderr:", stderr);
+          } else {
+            console.log("Display turned on successfully");
+            if (stdout) console.log("stdout:", stdout);
+          }
+        });
+      }
       break;
   }
 }
@@ -529,6 +763,8 @@ app.post("/api/v1/computer/:action", async (req, res) => {
       case "shutdown":
       case "reboot":
       case "quit":
+      case "disable-display":
+      case "enable-display":
         shutdownAction(req.params.action);
         break;
       default:
@@ -778,6 +1014,7 @@ async function getMPVProps(exclude = []) {
     pause: false,
     mute: false,
     filename: null,
+    path: null,
     duration: 0,
     position: 0,
     remaining: 0,
@@ -846,6 +1083,35 @@ async function main() {
     // Create file-local-options if not exists.
     if (!fs.existsSync(FILE_LOCAL_OPTIONS_PATH)) writeFileLocalOptions({});
     if (settings.uselocaldb) await initDB();
+
+    // Check if we need ydotoold for Wayland display wake
+    const session = process.env.XDG_SESSION_TYPE?.toLowerCase() || "";
+    if (session === "wayland") {
+      // Check if ydotoold is running
+      exec("pgrep ydotoold", (error) => {
+        if (error) {
+          // ydotoold not running, try to start it
+          console.log("ydotoold not detected. Attempting to start...");
+          exec("sudo ydotoold", (err, stdout, stderr) => {
+            if (err) {
+              console.error("Failed to start ydotoold:");
+              console.error("Error code:", err.code);
+              console.error("Error message:", err.message);
+              if (stderr) console.error("stderr:", stderr);
+              console.log("\nDisplay wake feature will not work. To enable:");
+              console.log("1. Ensure ydotool is installed: sudo pacman -S ydotool");
+              console.log("2. Run manually: sudo ydotoold");
+              console.log("3. Or configure sudoers to allow passwordless: sudo visudo");
+              console.log("   Add line: yourusername ALL=(ALL) NOPASSWD: /usr/bin/ydotoold");
+            } else {
+              console.log("ydotoold started successfully - display wake support enabled");
+            }
+          });
+        } else {
+          console.log("ydotoold detected - display wake support enabled");
+        }
+      });
+    }
 
     await showOSDMessage(
       `Remote access on: ${settings.serverIP}:${settings.serverPort}`,

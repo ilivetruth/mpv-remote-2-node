@@ -1,7 +1,7 @@
 {
-  "name": "mpv-remote",
-  "version": "1.0.7",
-  "description": "MPV remote control",
+  "name": "mpv-remote-2",
+  "version": "2.1.0",
+  "description": "MPV Remote 2 - Enhanced MPV remote control",
   "main": "./remote.socketio.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
