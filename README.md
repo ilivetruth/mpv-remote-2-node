@@ -42,7 +42,45 @@ mpv-remote # Follow instructions
 
 ## Update
 
-You have to re-run installation script after updating the package.
+### Getting Latest Features from mpv-remote-2-node
+
+To get the latest features and improvements from this fork, follow the instructions for your operating system:
+
+#### Windows Users
+
+**Run PowerShell as Administrator** (right-click PowerShell → Run as Administrator), then copy and paste:
+
+```powershell
+# Create directory and download latest version
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\mpv-remote-updates"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ilivetruth/mpv-remote-2-node/refs/heads/main/remoteServer.js" -OutFile "$env:USERPROFILE\mpv-remote-updates\remoteServer.js"
+
+# Remove old file and create symlink
+Remove-Item "$env:APPDATA\mpv\scripts\mpvremote\remoteServer.js" -Force
+New-Item -ItemType SymbolicLink -Path "$env:APPDATA\mpv\scripts\mpvremote\remoteServer.js" -Target "$env:USERPROFILE\mpv-remote-updates\remoteServer.js"
+```
+
+**Then restart MPV.**
+
+#### Linux/Mac Users
+
+**Open terminal** and run:
+
+```bash
+# Create directory and download latest version
+mkdir -p ~/mpv-remote-updates
+wget https://raw.githubusercontent.com/ilivetruth/mpv-remote-2-node/refs/heads/main/remoteServer.js -O ~/mpv-remote-updates/remoteServer.js
+
+# Remove old symlink and create new one
+rm ~/.config/mpv/scripts/mpvremote/remoteServer.js
+ln -s ~/mpv-remote-updates/remoteServer.js ~/.config/mpv/scripts/mpvremote/remoteServer.js
+```
+
+**Then restart MPV.**
+
+### Updating the Base Package
+
+If you need to update the base `mpv-remote` package (not common), run:
 
 ```bash
 npm update -g mpv-remote
